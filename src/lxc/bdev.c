@@ -2204,6 +2204,10 @@ static int overlayfs_mount(struct bdev *bdev)
 	work = alloca(lastslashidx + 7);
 	strncpy(work, upper, lastslashidx+7);
 	strcpy(work+lastslashidx, "olwork");
+	if ((mkdir(work, 0755) < 0) && errno != EEXIST) {
+		SYSERROR("error: mkdir %s", work);
+		return -22;
+	}
 
 	if (parse_mntopts(bdev->mntopts, &mntflags, &mntdata) < 0) {
 		free(mntdata);
