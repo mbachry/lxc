@@ -2183,27 +2183,36 @@ static int overlayfs_mount(struct bdev *bdev)
 
 	//  separately mount it first
 	//  mount -t overlayfs -oupperdir=${upper},lowerdir=${lower} lower dest
-	dup = alloca(strlen(bdev->src)+1);
-	strcpy(dup, bdev->src);
+	dup = strdupa(bdev->src);
 	if (!(lower = strchr(dup, ':')))
 		return -22;
 	if (!(upper = strchr(++lower, ':')))
 		return -22;
 	*upper = '\0';
 	upper++;
+	// work dir is optional
+	work = strchr(upper, ':');
+	if (work) {
+		*work = '\0';
+		work++;
+	}
 
-	// overlayfs.v22 or higher needs workdir option
-	// if upper is /var/lib/lxc/c2/delta0,
-	// then workdir is /var/lib/lxc/c2/olwork
-	lastslash = strrchr(upper, '/');
-	if (!lastslash)
-		return -22;
-	lastslash++;
-	lastslashidx = lastslash - upper;
+	if (!work) {
+		// overlayfs.v22 or higher needs workdir option, if it
+		// wasn't provided in config, infer it in the
+		// following way:
+		// if upper is /var/lib/lxc/c2/delta0,
+		// then workdir is /var/lib/lxc/c2/olwork
+		lastslash = strrchr(upper, '/');
+		if (!lastslash)
+			return -22;
+		lastslash++;
+		lastslashidx = lastslash - upper;
 
-	work = alloca(lastslashidx + 7);
-	strncpy(work, upper, lastslashidx+7);
-	strcpy(work+lastslashidx, "olwork");
+		work = alloca(lastslashidx + 7);
+		strncpy(work, upper, lastslashidx+7);
+		strcpy(work+lastslashidx, "olwork");
+	}
 	if ((mkdir(work, 0755) < 0) && errno != EEXIST) {
 		SYSERROR("error: mkdir %s", work);
 		return -22;
@@ -2385,7 +2394,7 @@ static int overlayfs_clonepaths(struct bdev *orig, struct bdev *new, const char 
 		// private delta which is originally rsynced from the
 		// original delta
 		char *osrc, *odelta, *nsrc, *ndelta, *work;
-		char *lastslash;
+		char *lastslash, *x;
 		int len, ret, lastslashidx;
 		if (!(osrc = strdup(orig->src)))
 			return -22;
@@ -2396,6 +2405,10 @@ static int overlayfs_clonepaths(struct bdev *orig, struct bdev *new, const char 
 		}
 		*odelta = '\0';
 		odelta++;
+		// ignore optional path to workdir, if present
+		x = strchr(odelta, ':');
+		if (x)
+			*x = '\0';
 		ndelta = dir_new_path(odelta, oldname, cname, oldpath, lxcpath);
 		if (!ndelta) {
 			free(osrc);
